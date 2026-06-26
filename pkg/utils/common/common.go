@@ -67,3 +67,19 @@ func GetOS() string {
 func IsWindows() bool {
 	return runtime.GOOS == "windows"
 }
+
+// IsAdmin checks if the current user has admin privileges
+func IsAdmin() bool {
+	if runtime.GOOS == "windows" {
+		// Simple check - try to write to a system directory
+		testFile := "C:\\Windows\\Temp\\admin_test.tmp"
+		if err := os.WriteFile(testFile, []byte("test"), 0644); err == nil {
+			os.Remove(testFile)
+			return true
+		}
+		return false
+	}
+	
+	// On Unix, check if user is root (uid 0)
+	return os.Geteuid() == 0
+}
