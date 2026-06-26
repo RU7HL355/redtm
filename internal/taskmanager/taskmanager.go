@@ -1,36 +1,36 @@
 // ============================================================
-// taskmanager.go - Task Manager Disabler
+// taskmanager.go - Task Manager Disabler (FIXED)
 // ============================================================
 package taskmanager
 
 import (
 	"log"
-	"runtime"
+	"time"
 )
 
 // Disable disables Task Manager
 func Disable() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	
 	log.Println("🔒 Disabling Task Manager...")
 	
-	// Disable Task Manager via registry
-	disableTaskManager()
+	done := make(chan bool, 1)
+	go func() {
+		disableTaskManager()
+		hookTaskmgr()
+		done <- true
+	}()
 	
-	// Hook Task Manager process creation
-	hookTaskmgr()
+	select {
+	case <-done:
+		log.Println("✅ Task Manager disabled")
+	case <-time.After(2 * time.Second):
+		log.Println("⚠️ Task Manager disable timeout - continuing")
+	}
 }
 
-// disableTaskManager disables Task Manager via registry
 func disableTaskManager() {
-	// In production:
-	// HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System
-	// DisableTaskMgr = 1
+	// In production, modify registry
 }
 
-// hookTaskmgr hooks Task Manager process creation
 func hookTaskmgr() {
 	// In production, use API hooking
 }

@@ -1,28 +1,45 @@
 // ============================================================
-// hideconsole.go - Console Hiding (Windows)
+// hideconsole.go - Console Hiding (FIXED - NON-BLOCKING)
 // ============================================================
 package hideconsole
 
 import (
 	"log"
 	"syscall"
+	"time"
 )
 
 // HideConsole hides the console window
 func HideConsole() {
-	user32 := syscall.NewLazyDLL("user32.dll")
-	getConsoleWindow := user32.NewProc("GetConsoleWindow")
-	showWindow := user32.NewProc("ShowWindow")
+	log.Println("🕵️ Hiding console...")
 	
-	hwnd, _, _ := getConsoleWindow.Call()
-	if hwnd == 0 {
-		log.Println("No console window found")
-		return
+	// Use a channel to handle timeout
+	done := make(chan bool, 1)
+	go func() {
+		user32 := syscall.NewLazyDLL("user32.dll")
+		getConsoleWindow := user32.NewProc("GetConsoleWindow")
+		showWindow := user32.NewProc("ShowWindow")
+		
+		hwnd, _, _ := getConsoleWindow.Call()
+		if hwnd == 0 {
+			log.Println("No console window found")
+			done <- true
+			return
+		}
+		
+		// SW_HIDE = 0
+		showWindow.Call(hwnd, 0)
+		log.Println("Console window hidden")
+		done <- true
+	}()
+	
+	// Wait for hide with timeout
+	select {
+	case <-done:
+		// Success
+	case <-time.After(2 * time.Second):
+		log.Println("⚠️ Console hide timeout - continuing")
 	}
-	
-	// SW_HIDE = 0
-	showWindow.Call(hwnd, 0)
-	log.Println("Console window hidden")
 }
 
 // ShowConsole shows the console window

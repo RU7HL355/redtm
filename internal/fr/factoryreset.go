@@ -1,37 +1,37 @@
 // ============================================================
-// factoryreset.go - Factory Reset Protection
+// factoryreset.go - Factory Reset Protection (FIXED)
 // ============================================================
 package factoryreset
 
 import (
 	"log"
-	"runtime"
+	"time"
 )
 
 // Disable disables factory reset options
 func Disable() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	
 	log.Println("🔒 Disabling factory reset options...")
 	
-	// Disable System Restore
-	disableSystemRestore()
+	// Use goroutine with timeout
+	done := make(chan bool, 1)
+	go func() {
+		disableSystemRestore()
+		disableRecoveryOptions()
+		done <- true
+	}()
 	
-	// Disable recovery options
-	disableRecoveryOptions()
+	select {
+	case <-done:
+		log.Println("✅ Factory reset protection applied")
+	case <-time.After(2 * time.Second):
+		log.Println("⚠️ Factory reset timeout - continuing")
+	}
 }
 
-// disableSystemRestore disables System Restore
 func disableSystemRestore() {
-	// In production, modify registry:
-	// HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\SystemRestore
-	// DisableSR = 1
+	// In production, modify registry
 }
 
-// disableRecoveryOptions disables recovery options
 func disableRecoveryOptions() {
-	// In production, modify BCD:
-	// bcdedit /set {default} recoveryenabled no
+	// In production, modify BCD
 }
