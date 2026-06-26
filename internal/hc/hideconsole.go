@@ -1,20 +1,15 @@
 // ============================================================
-// hideconsole.go - Console Hiding
+// hideconsole.go - Console Hiding (Windows)
 // ============================================================
 package hideconsole
 
 import (
 	"log"
-	"runtime"
 	"syscall"
 )
 
 // HideConsole hides the console window
 func HideConsole() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	
 	user32 := syscall.NewLazyDLL("user32.dll")
 	getConsoleWindow := user32.NewProc("GetConsoleWindow")
 	showWindow := user32.NewProc("ShowWindow")
@@ -32,10 +27,6 @@ func HideConsole() {
 
 // ShowConsole shows the console window
 func ShowConsole() {
-	if runtime.GOOS != "windows" {
-		return
-	}
-	
 	user32 := syscall.NewLazyDLL("user32.dll")
 	getConsoleWindow := user32.NewProc("GetConsoleWindow")
 	showWindow := user32.NewProc("ShowWindow")
@@ -47,4 +38,19 @@ func ShowConsole() {
 	
 	// SW_SHOW = 5
 	showWindow.Call(hwnd, 5)
+}
+
+// IsConsoleHidden checks if console is hidden
+func IsConsoleHidden() bool {
+	user32 := syscall.NewLazyDLL("user32.dll")
+	getConsoleWindow := user32.NewProc("GetConsoleWindow")
+	isWindowVisible := user32.NewProc("IsWindowVisible")
+	
+	hwnd, _, _ := getConsoleWindow.Call()
+	if hwnd == 0 {
+		return true
+	}
+	
+	ret, _, _ := isWindowVisible.Call(hwnd)
+	return ret == 0
 }

